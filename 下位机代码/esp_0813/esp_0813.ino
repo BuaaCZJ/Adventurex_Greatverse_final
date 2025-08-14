@@ -22,12 +22,14 @@ String serialInput = "";
 bool serialComplete = false;
 
 // 灯光效果状态机
-enum EffectState { IDLE, RUNNING, COMPLETE };
+enum EffectState { IDLE, RUNNING, COMPLETE, COMPLETE_TO_BREATH }; // 添加过渡状态
 EffectState effectState = IDLE;
 int currentEffect = 0;
 int currentPixel = 0;
+int currentPixel_1 = 0;
 unsigned long previousMillis = 0;
 const long effectInterval = 150; // 每个LED的时间间隔
+int cnt=0;
 
 // ================== 新增效果变量 ==================
 // 呼吸灯效果变量
@@ -86,7 +88,7 @@ class MyCharacteristicCallbacks: public BLECharacteristicCallbacks {
               case 3: effectColor = rgb_display_9.Color(0, 0, 120);   break; // 蓝色
               case 4: effectColor = rgb_display_9.Color(218, 165, 32);break; // 金色
               case 5: // 呼吸灯初始化
-                effectColor = rgb_display_9.Color(255, 255, 255); // 白色呼吸
+
                 breathBrightness = breathMin;
                 breathDirection = 1;
                 break;
@@ -156,9 +158,19 @@ void setup() {
   Serial.println("可用灯光效果: 1=紫色, 2=绿色, 3=蓝色, 4=金色, 5=呼吸灯, 6=闪烁灯");
 }
 
-// 处理灯光效果的状态机
+
+
+
+// 全局变量修改
+int breathCycleCount = 0;          // 呼吸周期计数器
+const int breathTotalCycles = 3;   // 呼吸灯运行周期数
+
+
+
+
+// 在handleEffects()函数中修改流水灯完成后的处理
 void handleEffects() {
-  if(effectState != RUNNING) return;
+  if(effectState != RUNNING && effectState != COMPLETE_TO_BREATH) return;
   
   unsigned long currentMillis = millis();
   
@@ -172,20 +184,23 @@ void handleEffects() {
         rgb_display_9.show();
         currentPixel++;
       } else {
-        // 效果完成
-        delay(10);
-        rgb_display_9.clear();
-        rgb_display_9.show();
-        currentPixel = 0;
-        effectState = IDLE;
-        Serial.println("灯光效果完成");
+        // 流水灯完成，进入过渡状态
+        effectState = COMPLETE_TO_BREATH;
+        currentEffect = 5;  // 设置为呼吸灯效果
+        
+        // 初始化呼吸灯变量
+        breathBrightness = breathMin;
+        breathDirection = 1;
+        breathCycleCount = 0;
+        
+        Serial.println("流水灯完成，即将开始呼吸灯效果");
       }
     }
   }
   
-  // ================== 新增效果5: 呼吸灯 ==================
+  // 处理呼吸灯效果
   else if(currentEffect == 5) {
-    if(currentMillis - previousMillis >= 30) { // 更快的更新速度
+    if(currentMillis - previousMillis >= 30) {
       previousMillis = currentMillis;
       
       // 更新亮度
@@ -198,6 +213,7 @@ void handleEffects() {
       } else if(breathBrightness <= breathMin) {
         breathBrightness = breathMin;
         breathDirection = 1;
+        breathCycleCount++; // 完成一个呼吸周期
       }
       
       // 应用呼吸效果到所有LED
@@ -206,9 +222,18 @@ void handleEffects() {
       }
       rgb_display_9.setBrightness(breathBrightness);
       rgb_display_9.show();
+      
+      // 检查是否完成指定周期数
+      if(breathCycleCount >= breathTotalCycles) {
+        // 呼吸灯完成，返回空闲状态
+        rgb_display_9.clear();
+        rgb_display_9.show();
+        effectState = IDLE;
+        currentEffect = 0;
+        Serial.println("呼吸灯效果完成");
+      }
     }
   }
-  
   // ================== 新增效果6: 闪烁灯 ==================
   else if(currentEffect == 6) {
     if(currentMillis - flashLastChange >= flashInterval) {
@@ -228,6 +253,14 @@ void handleEffects() {
     }
   }
 }
+
+
+
+
+
+
+
+
 
 void loop() {
   // 处理灯光效果
